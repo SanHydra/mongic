@@ -1,4 +1,4 @@
-package com.minc.mongic.service;
+package com.mindc.mongic.service;
 
 import java.util.List;
 

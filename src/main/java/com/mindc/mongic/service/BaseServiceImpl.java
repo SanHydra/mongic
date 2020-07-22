@@ -1,10 +1,10 @@
-package com.minc.mongic.service;
+package com.mindc.mongic.service;
 
 
-import com.minc.mongic.annotation.MongoDocument;
-import com.minc.mongic.annotation.MongoIndex;
-import com.minc.mongic.exception.MongicException;
-import com.minc.mongic.utils.EntityUtils;
+import com.mindc.mongic.annotation.MongoDocument;
+import com.mindc.mongic.annotation.MongoIndex;
+import com.mindc.mongic.exception.MongicException;
+import com.mindc.mongic.utils.EntityUtils;
 import com.mongodb.client.*;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.result.DeleteResult;

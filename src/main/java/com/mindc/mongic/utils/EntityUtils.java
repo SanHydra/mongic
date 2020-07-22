@@ -7,7 +7,7 @@
  *
  */
 
-package com.minc.mongic.utils;
+package com.mindc.mongic.utils;
 
 import org.bson.Document;
 import org.bson.types.ObjectId;

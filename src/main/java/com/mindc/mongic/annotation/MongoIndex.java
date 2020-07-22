@@ -1,4 +1,4 @@
-package com.minc.mongic.annotation;
+package com.mindc.mongic.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

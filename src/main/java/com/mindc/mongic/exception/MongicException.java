@@ -1,4 +1,4 @@
-package com.minc.mongic.exception;
+package com.mindc.mongic.exception;
 
 /**
  * 通用异常

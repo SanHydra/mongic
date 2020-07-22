@@ -1,6 +1,6 @@
-package com.minc.mongic.annotation;
+package com.mindc.mongic.annotation;
 
-import com.minc.mongic.service.BaseEntity;
+import com.mindc.mongic.service.BaseEntity;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
