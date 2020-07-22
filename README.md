@@ -1,2 +1,2 @@
 # mongic
-java mongodb  tool
+java mongodb  tool depend on spring-boot-autoconfigure
