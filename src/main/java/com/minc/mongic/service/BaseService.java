@@ -16,7 +16,7 @@ public interface BaseService<T extends BaseEntity> {
     /**
      * insert one record
      * @param t  the record
-     * @return  the record with complete uuid
+     * @return  the record with complete
      */
     T insert(T t);
 
