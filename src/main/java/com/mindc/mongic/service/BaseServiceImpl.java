@@ -127,8 +127,8 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
                 if ("".equals(value)) {
                     value = fieldName;
                 }
-                value = value + "_1";
-                if (!indexNames.contains(value)) {
+                String value1 = value + "_1";
+                if (!indexNames.contains(value1)) {
                     getCollection().createIndex(new Document(value, 1), new IndexOptions()
                             .unique(annotation.unique()).sparse(annotation.sparse()).background(annotation.background()));
                 }

@@ -16,4 +16,5 @@ import java.lang.annotation.Target;
 public @interface MongoTransaction {
 
     Class rollbackFor() default Exception.class;
+    String value() default "";
 }

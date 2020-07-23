@@ -38,12 +38,19 @@ public class MongoTransactionAspect {
 
             Class exceptionClass = Exception.class;
 
+
             BaseServiceImpl service = (BaseServiceImpl) thisObj;
 
             Method method = signature.getMethod();
+            String name = method.getName();
+
             MongoTransaction annotation = method.getAnnotation(MongoTransaction.class);
             if (annotation != null) {
                 exceptionClass = annotation.rollbackFor();
+                String value = annotation.value();
+                if (!"".equals(value)){
+                    name = value;
+                }
             }
             //开启事务
             service.startTransaction();
