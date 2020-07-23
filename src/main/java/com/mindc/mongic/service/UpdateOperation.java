@@ -12,12 +12,12 @@ import java.util.Set;
  * @author SanHydra
  * @date 2020/7/20 3:57 PM
  */
-public class UpdateListOperation {
+public class UpdateOperation {
 
     private Document updateDocument = new Document();
 
-    public static UpdateListOperation create(){
-        return new UpdateListOperation();
+    public static UpdateOperation create(){
+        return new UpdateOperation();
     }
 
     /**
@@ -26,7 +26,7 @@ public class UpdateListOperation {
      * @param value 累加值
      * @return
      */
-    public UpdateListOperation inc(String column, Number value){
+    public UpdateOperation inc(String column, Number value){
         Document inc = (Document) updateDocument.get("$inc");
         if (inc == null){
             inc = new Document();
@@ -42,7 +42,7 @@ public class UpdateListOperation {
      * @param value 元素值
      * @return
      */
-    public UpdateListOperation push(String column, Object value){
+    public UpdateOperation push(String column, Object value){
         Document push = (Document) updateDocument.get("$push");
         if (push == null){
             push = new Document();
@@ -58,7 +58,7 @@ public class UpdateListOperation {
      * @param value 值
      * @return
      */
-    public UpdateListOperation addToSet(String column, Object value){
+    public UpdateOperation addToSet(String column, Object value){
         Document addToSet = (Document) updateDocument.get("$addToSet");
         if (addToSet == null){
             addToSet = new Document();
@@ -74,7 +74,7 @@ public class UpdateListOperation {
      * @param values 元素数组
      * @return
      */
-    public UpdateListOperation pull(String column, Object ... values){
+    public UpdateOperation pull(String column, Object ... values){
         Document pull = (Document) updateDocument.get("$pull");
         if (pull == null){
             pull = new Document();
@@ -100,13 +100,29 @@ public class UpdateListOperation {
      * @param pullCondition 移除元素的条件
      * @return
      */
-    public UpdateListOperation pull(String column, QueryCondition pullCondition){
+    public UpdateOperation pull(String column, QueryCondition pullCondition){
         Document pull = (Document) updateDocument.get("$pull");
         if (pull == null){
             pull = new Document();
         }
         pull.put(column,pullCondition.getQueryDocument());
         updateDocument.put("$pull",pull);
+        return this;
+    }
+
+    /**
+     * 常规设置值
+     * @param column 列名
+     * @param value 值
+     * @return
+     */
+    public UpdateOperation set(String column, Object value){
+        Document set = (Document) updateDocument.get("set");
+        if (set == null){
+            set = new Document();
+        }
+        set.put(column,value);
+        updateDocument.put("$set",set);
         return this;
     }
 

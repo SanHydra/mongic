@@ -339,7 +339,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     }
 
     @Override
-    public long update(UpdateListOperation operation, QueryCondition condition) {
+    public long update(UpdateOperation operation, QueryCondition condition) {
         Document document = operation.getUpdateDocument();
 
         checkUpdateDocument(document);

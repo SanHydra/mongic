@@ -92,7 +92,7 @@ public interface BaseService<T extends BaseEntity> {
      * @param condition 条件
      * @return 更新成功条数
      */
-    long update(UpdateListOperation update, QueryCondition condition);
+    long update(UpdateOperation update, QueryCondition condition);
 
     /**
      * 根据条件 更新所有字段
