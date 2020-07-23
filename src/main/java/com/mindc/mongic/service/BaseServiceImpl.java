@@ -17,6 +17,7 @@ import org.bson.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.mongo.MongoProperties;
 
+
 import javax.annotation.PostConstruct;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
@@ -42,13 +43,45 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     private String documentName;
 
-    private List<String> keyIndexes = Arrays.asList("_id","id");
+    private String database;
+
+    private ThreadLocal<ClientSession> sessionThreadLocal = new ThreadLocal<>();
+
+    private List<String> keyIndexes = Arrays.asList("_id", "id");
+
+
+
+    public void startTransaction() {
+        ClientSession clientSession = mongoClient.startSession();
+        clientSession.startTransaction();
+        this.sessionThreadLocal.set(clientSession);
+    }
+
+    public void abortTransaction() {
+        try (ClientSession clientSession = this.sessionThreadLocal.get()) {
+            if (clientSession != null && clientSession.hasActiveTransaction()) {
+                clientSession.abortTransaction();
+                this.sessionThreadLocal.remove();
+            }
+        }
+    }
+
+    public void commitTransaction() {
+        try (ClientSession clientSession = this.sessionThreadLocal.get()) {
+            if (clientSession != null && clientSession.hasActiveTransaction()) {
+                clientSession.commitTransaction();
+                clientSession.close();
+                this.sessionThreadLocal.remove();
+            }
+        }
+    }
+
 
     public MongoCollection<Document> getCollection() {
         if (collection != null) {
             return collection;
         }
-        return this.collection = mongoClient.getDatabase(getDbName()).getCollection(getDocumentName());
+        return this.collection = mongoClient.getDatabase(documentName).getCollection(getDocumentName());
     }
 
 
@@ -56,6 +89,20 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @PostConstruct
     public void init() {
+        String uri = mongoProperties.getUri();
+        if (uri != null){
+            uri = uri.replace("mongodb://","");
+            String[] two = uri.split("/");
+            if (two.length == 2){
+                String[] split = two[1].split("\\?");
+                if (split.length >= 1){
+                    this.database = split[0];
+                }
+            }
+        }
+        if (this.database == null){
+            this.database = mongoProperties.getDatabase();
+        }
 
         ListIndexesIterable<Document> documents = getCollection().listIndexes();
 
@@ -75,15 +122,15 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
             String fieldName = declaredField.getName();
 
             MongoIndex annotation = declaredField.getAnnotation(MongoIndex.class);
-            if (annotation != null){
+            if (annotation != null) {
                 String value = annotation.value();
-                if ("".equals(value)){
+                if ("".equals(value)) {
                     value = fieldName;
                 }
                 value = value + "_1";
                 if (!indexNames.contains(value)) {
-                    getCollection().createIndex(new Document(value,1),new IndexOptions()
-                    .unique(annotation.unique()).sparse(annotation.sparse()).background(annotation.background()));
+                    getCollection().createIndex(new Document(value, 1), new IndexOptions()
+                            .unique(annotation.unique()).sparse(annotation.sparse()).background(annotation.background()));
                 }
             }
         }
@@ -94,36 +141,38 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     /**
      * 初始化之后要执行的方法，有需要时可以重写
      */
-    protected void afterInit(){
+    protected void afterInit() {
 
     }
 
     /**
      * 创建索引，如果不存在
-     * @param field 字段名称
+     *
+     * @param field  字段名称
      * @param unique 是否唯一
      */
-    protected void createIndexIfNotExists(String field,boolean unique){
+    protected void createIndexIfNotExists(String field, boolean unique) {
         String name = field + "_1";
-        if (!indexNames.contains(name)){
-            getCollection().createIndex(new Document(field,1),new IndexOptions().unique(unique));
+        if (!indexNames.contains(name)) {
+            getCollection().createIndex(new Document(field, 1), new IndexOptions().unique(unique));
             indexNames.add(name);
         }
     }
 
     /**
      * 移除索引
+     *
      * @param field 字段名称
      */
-    protected void dropIndex(String field){
-        if (field == null){
+    protected void dropIndex(String field) {
+        if (field == null) {
             throw new MongicException("you can't remove a null index");
         }
         if (isKeyIndex(field)) {
             return;
         }
 
-        String name = field+"_1";
+        String name = field + "_1";
         if (indexNames.contains(name)) {
             getCollection().dropIndex(name);
             indexNames.remove(name);
@@ -134,7 +183,13 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     public T insert(T t) {
         Document document = EntityUtils.toDocument(t);
         document.remove("id");
-        InsertOneResult insertOneResult = getCollection().insertOne(document);
+        ClientSession clientSession = this.sessionThreadLocal.get();
+        InsertOneResult insertOneResult;
+        if (clientSession != null) {
+            insertOneResult = getCollection().insertOne(clientSession, document);
+        } else {
+            insertOneResult = getCollection().insertOne(document);
+        }
         BsonObjectId objectId = insertOneResult.getInsertedId().asObjectId();
         String id = objectId.getValue().toHexString();
         t.setId(id);
@@ -149,7 +204,14 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
             document.remove("id");
             list.add(document);
         }
-        InsertManyResult insertManyResult = getCollection().insertMany(list);
+        ClientSession clientSession = this.sessionThreadLocal.get();
+
+        InsertManyResult insertManyResult;
+        if (clientSession != null) {
+            insertManyResult = getCollection().insertMany(clientSession, list);
+        } else {
+            insertManyResult = getCollection().insertMany(list);
+        }
         Map<Integer, BsonValue> insertedIds = insertManyResult.getInsertedIds();
         for (int i = 0; i < t.size(); i++) {
             BsonObjectId objectId = insertedIds.get(i).asObjectId();
@@ -162,10 +224,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     @Override
     public T selectById(String id) {
         checkId(id);
-
-        Document document = new Document("_id", id);
-        Document result = getCollection().find(document).limit(1).first();
-        return EntityUtils.fromDocument(result, getEntityClass());
+        return selectOne(QueryCondition.create().eq("_id",id));
     }
 
     @Override
@@ -173,7 +232,13 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         List<T> result = new ArrayList<>();
         Document document = condition.getQueryDocument();
         Document sortDocument = condition.getSortDocument();
-        FindIterable<Document> documents = getCollection().find(document);
+        ClientSession clientSession = this.sessionThreadLocal.get();
+        FindIterable<Document> documents;
+        if (clientSession != null) {
+            documents = getCollection().find(clientSession,document);
+        }else {
+            documents = getCollection().find(document);
+        }
 
         Document projection = condition.getProjection();
         if (projection != null && projection.size() > 0) {
@@ -190,13 +255,27 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @Override
     public long selectCount(QueryCondition condition) {
-        long l = getCollection().countDocuments(condition.getQueryDocument());
+        ClientSession clientSession = this.sessionThreadLocal.get();
+        long l;
+        if (clientSession != null){
+            l = getCollection().countDocuments(clientSession,condition.getQueryDocument());
+        }else {
+             l= getCollection().countDocuments(condition.getQueryDocument());
+        }
         return l;
     }
 
     @Override
     public T selectOne(QueryCondition condition) {
-        FindIterable<Document> documents = getCollection().find(condition.getQueryDocument());
+
+        ClientSession clientSession = sessionThreadLocal.get();
+        FindIterable<Document> documents;
+        if (clientSession != null){
+            documents = getCollection().find(clientSession,condition.getQueryDocument());
+        }else {
+            documents = getCollection().find(condition.getQueryDocument());
+        }
+
         if (condition.getProjection() != null) {
             documents = documents.projection(condition.getProjection());
         }
@@ -206,9 +285,8 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @Override
     public MongoPage selectPage(MongoPage mongoPage, QueryCondition condition) {
-        Document document = condition.getQueryDocument();
         //查询总条数
-        long total = getCollection().countDocuments(document);
+        long total = selectCount(condition);
         //重置skip 和 limit
         condition.skip(mongoPage.getSkip()).limit(mongoPage.getSize());
 
@@ -265,8 +343,12 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         Document document = operation.getUpdateDocument();
 
         checkUpdateDocument(document);
-
-        return getCollection().updateMany(condition.getQueryDocument(), document).getModifiedCount();
+        ClientSession clientSession = sessionThreadLocal.get();
+        if (clientSession != null) {
+            return getCollection().updateMany(clientSession,condition.getQueryDocument(), document).getModifiedCount();
+        }else {
+            return getCollection().updateMany(condition.getQueryDocument(), document).getModifiedCount();
+        }
     }
 
     @Override
@@ -284,15 +366,25 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
         Document set = new Document();
         set.put("$set", updateDocument);
-
-        UpdateResult updateResult = getCollection().updateMany(condition.getQueryDocument(), set);
+        ClientSession clientSession = sessionThreadLocal.get();
+        UpdateResult updateResult;
+        if (clientSession != null){
+            updateResult = getCollection().updateMany(clientSession,condition.getQueryDocument(), set);
+        }else {
+            updateResult = getCollection().updateMany(condition.getQueryDocument(), set);
+        }
         return updateResult.getModifiedCount();
     }
 
     @Override
     public long remove(QueryCondition condition) {
-        DeleteResult deleteResult = getCollection().deleteMany(condition.getQueryDocument());
-        return deleteResult.getDeletedCount();
+        ClientSession clientSession = sessionThreadLocal.get();
+        if (clientSession != null){
+          return getCollection().deleteMany(clientSession,condition.getQueryDocument()).getDeletedCount();
+        }else {
+            DeleteResult deleteResult = getCollection().deleteMany(condition.getQueryDocument());
+            return deleteResult.getDeletedCount();
+        }
     }
 
     @Override
@@ -332,7 +424,13 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         }
 
         List<K> data = new LinkedList<>();
-        AggregateIterable<Document> aggregate = getCollection().aggregate(pipe);
+        ClientSession clientSession = sessionThreadLocal.get();
+        AggregateIterable<Document> aggregate;
+        if (clientSession != null) {
+            aggregate = getCollection().aggregate(clientSession,pipe);
+        }else {
+            aggregate = getCollection().aggregate(pipe);
+        }
 
         aggregate.forEach(
                 (Consumer<? super Document>) (doc) -> {
@@ -359,7 +457,12 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         pipe.add(new Document("$group", groupCondition.getDocument()));
 
         AtomicLong atomicLong = new AtomicLong(0);
-        getCollection().aggregate(pipe).forEach(doc -> atomicLong.incrementAndGet());
+        ClientSession clientSession = sessionThreadLocal.get();
+        if (clientSession == null) {
+            getCollection().aggregate(pipe).forEach(doc -> atomicLong.incrementAndGet());
+        }else {
+            getCollection().aggregate(clientSession,pipe).forEach(doc -> atomicLong.incrementAndGet());
+        }
 
         page.setTotal(atomicLong.longValue());
         //重置分页参数
@@ -377,16 +480,10 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         return aggregate(queryCondition, groupCondition, Map.class);
     }
 
-    /**
-     * 获取配置中的db名称
-     * @return
-     */
-    private String getDbName() {
-        return mongoProperties.getDatabase();
-    }
 
     /**
      * 从注解中获取文档名称
+     *
      * @return
      */
     private String getDocumentName() {
@@ -425,24 +522,26 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         return (Class<T>) BaseEntity.class;
     }
 
-    private boolean isKeyIndex(String key){
+    private boolean isKeyIndex(String key) {
         return keyIndexes.contains(key);
     }
 
-    private void checkUpdateEntity(BaseEntity t){
+    private void checkUpdateEntity(BaseEntity t) {
         String uuid = t.getId();
-        if (uuid == null){
+        if (uuid == null) {
             throw new MongicException("id must not be null");
         }
 
     }
-    private void checkUpdateDocument(Document document){
-        if (document.size() == 0){
+
+    private void checkUpdateDocument(Document document) {
+        if (document.size() == 0) {
             throw new MongicException("update document need at least one non-null value");
         }
     }
-    private void checkId(String id){
-        if (id == null){
+
+    private void checkId(String id) {
+        if (id == null) {
             throw new MongicException("id must not be null");
         }
     }

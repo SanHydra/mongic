@@ -23,6 +23,15 @@ public class QueryCondition {
     private List<Order> orderFields = new ArrayList<>();
 
     /**
+     * 复杂查询之or
+     */
+    private List<QueryCondition> orConditions = new ArrayList<>();
+    /**
+     * 复杂查询之and
+     */
+    private List<QueryCondition> andConditions = new ArrayList<>();
+
+    /**
      * 查询时跳过的数据数量
      */
     private int skip =0;
@@ -362,6 +371,32 @@ public class QueryCondition {
         return this;
     }
 
+    public QueryCondition or(QueryCondition ... orCondition){
+        if (orCondition != null && orCondition.length > 0){
+            orConditions.addAll(Arrays.asList(orCondition));
+        }
+        return this;
+    }
+    public QueryCondition or(Collection<QueryCondition> orCondition){
+        if (orCondition != null && orCondition.size() > 0){
+            orConditions.addAll(orCondition);
+        }
+        return this;
+    }
+
+    public QueryCondition and(QueryCondition ... andCondition){
+        if (andCondition != null && andCondition.length > 0){
+            andConditions.addAll(Arrays.asList(andCondition));
+        }
+        return this;
+    }
+    public QueryCondition and(Collection<QueryCondition> andCondition){
+        if (andCondition != null && andCondition.size() > 0){
+            andConditions.addAll(andCondition);
+        }
+        return this;
+    }
+
     /**
      * 限制条数
      * @param limit 条数
@@ -549,6 +584,22 @@ public class QueryCondition {
             }
             query.put(field,criteria);
         }
+        if (orConditions.size() > 0){
+            List<Document> ors = new ArrayList<>();
+            for (QueryCondition orCondition : orConditions) {
+                ors.add(orCondition.getQueryDocument());
+            }
+            query.put("$or",ors);
+        }
+
+        if (andConditions.size() > 0){
+            List<Document> ands = new ArrayList<>();
+            for (QueryCondition andCondition : andConditions) {
+                ands.add(andCondition.getQueryDocument());
+            }
+            query.put("$and",ands);
+        }
+
         return query;
     }
 

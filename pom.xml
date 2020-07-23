@@ -12,14 +12,19 @@
         <java.version>1.8</java.version>
         <jackson.version>2.11.1</jackson.version>
         <mongo.version>4.0.5</mongo.version>
+        <springboot.version>2.3.1.RELEASE</springboot.version>
     </properties>
 
     <dependencies>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
-            <version>2.3.1.RELEASE</version>
+            <version>${springboot.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+            <version>${springboot.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

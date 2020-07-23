@@ -9,4 +9,7 @@ public class MongicException extends RuntimeException{
     public MongicException(String message) {
         super(message);
     }
+    public MongicException() {
+        super();
+    }
 }
