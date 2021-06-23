@@ -13,13 +13,10 @@ public class YourEntity extends BaseEntity{
     private String yourField;
     
     private Map yourMap;
-    
-    @MongoIndex(value = "index_name",unique = true)
-    private Integer indexId;
 }
 ```
 实体类需要继承自BaseEntity，并添加@MongoDocument注解声明集合名称.
-@MongoIndex 可以声明索引,会在项目启动的时候自动为您生成索引
+注意，实体中嵌套的实体需要实现Serializable
 
 - 2.服务实现
 ```java
