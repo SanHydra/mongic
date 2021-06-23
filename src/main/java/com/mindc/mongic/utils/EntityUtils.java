@@ -1,11 +1,3 @@
-/*
- * 文 件 名:  EntityUtils.java
- * 版    权:  JobWen Technologies Co., Ltd. Copyright 2017-2020,  All rights reserved
- * 描    述:
- * 创建人  :  Aries
- * 创建时间:  2020年02月12日
- *
- */
 
 package com.mindc.mongic.utils;
 
