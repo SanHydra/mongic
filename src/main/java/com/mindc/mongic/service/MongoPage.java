@@ -3,7 +3,7 @@ package com.mindc.mongic.service;
 import java.util.List;
 
 /**
- * @author SanHydra
+ * @author lxf
  * @date 2020/7/18 10:40 AM
  */
 public class MongoPage<T> {

@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * mongo base service
  *
- * @author SanHydra
+ * @author lxf
  * @date 2020/7/18 10:33 AM
  */
 public interface BaseService<T extends BaseEntity> {
@@ -16,7 +16,7 @@ public interface BaseService<T extends BaseEntity> {
     /**
      * insert one record
      * @param t  the record
-     * @return  the record with complete
+     * @return  the record with complete uuid
      */
     T insert(T t);
 
@@ -27,12 +27,15 @@ public interface BaseService<T extends BaseEntity> {
      */
     List<T> insertBatch(List<T> t);
 
+
+    T selectById(String uuid);
+
     /**
-     * 根据id查询记录
-     * @param id  记录id
-     * @return  记录
+     * 根据id更新记录，或者写入一条新纪录
+     * @param t 记录
+     * @return 记录
      */
-    T selectById(String id);
+    T insertOrUpdate(T t);
 
     /**
      * 根据条件查询记录
@@ -63,14 +66,12 @@ public interface BaseService<T extends BaseEntity> {
      */
     MongoPage selectPage(MongoPage mongoPage, QueryCondition condition);
 
-
     /**
      * 根据mongo的id更新非空字段，排除uuid
      * @param t
      * @return
      */
     long updateById(T t);
-
 
     /**
      * 根据id 更新所有字段 排除uuid
@@ -120,7 +121,7 @@ public interface BaseService<T extends BaseEntity> {
 
     /**
      * 根据id删除记录
-     * @param id mongo唯一主键
+     * @param id
      * @return
      */
     long removeById(String id);

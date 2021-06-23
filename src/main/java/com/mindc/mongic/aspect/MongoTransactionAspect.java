@@ -1,5 +1,6 @@
 package com.mindc.mongic.aspect;
 
+
 import com.mindc.mongic.annotation.MongoTransaction;
 import com.mindc.mongic.service.BaseServiceImpl;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -8,6 +9,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.aop.aspectj.MethodInvocationProceedingJoinPoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
@@ -20,6 +22,9 @@ import java.lang.reflect.Method;
 @Aspect
 public class MongoTransactionAspect {
 
+    @Value("${spring.data.mongodb.enable-transaction:false}")
+    private Boolean enableTransaction;
+
 
     @Pointcut("@annotation(com.mindc.mongic.annotation.MongoTransaction)")
     public void logPointCut() {
@@ -28,6 +33,9 @@ public class MongoTransactionAspect {
 
     @Around("logPointCut()")
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (!enableTransaction){
+            return joinPoint.proceed();
+        }
         MethodInvocationProceedingJoinPoint point = (MethodInvocationProceedingJoinPoint) joinPoint;
 
         Object thisObj = point.getTarget();
@@ -42,15 +50,12 @@ public class MongoTransactionAspect {
             BaseServiceImpl service = (BaseServiceImpl) thisObj;
 
             Method method = signature.getMethod();
-            String name = method.getName();
 
             MongoTransaction annotation = method.getAnnotation(MongoTransaction.class);
             if (annotation != null) {
                 exceptionClass = annotation.rollbackFor();
                 String value = annotation.value();
-                if (!"".equals(value)){
-                    name = value;
-                }
+
             }
             //开启事务
             service.startTransaction();

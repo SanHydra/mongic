@@ -1,8 +1,10 @@
 package com.mindc.mongic.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindc.mongic.exception.MongicException;
+import com.mindc.mongic.service.BaseEntity;
 
 import java.util.List;
 import java.util.Map;
@@ -24,9 +26,17 @@ public class JsonUtils {
         return null;
     }
     public static  <T> T  fromJson(String json,Class<T> cls){
-
         try {
            return objectMapper.readValue(json,cls);
+        } catch (JsonProcessingException e) {
+            throw new MongicException("json parse error source : "+json);
+        }
+    }
+
+    public static <T> List<T> fromJsonToList(String json,Class<T> cls){
+        JavaType javaType = objectMapper.getTypeFactory().constructParametricType(List.class, cls);
+        try {
+            return objectMapper.readValue(json, javaType);
         } catch (JsonProcessingException e) {
             throw new MongicException("json parse error source : "+json);
         }
@@ -39,5 +49,12 @@ public class JsonUtils {
     public static List fromJsonToList(String json){
 
         return fromJson(json,List.class);
+    }
+
+    public static void main(String[] args) {
+        List<BaseEntity> baseEntities = fromJsonToList("[{\"id\":\"3\"}]", BaseEntity.class);
+        for (BaseEntity baseEntity : baseEntities) {
+            System.out.println(baseEntity.getId());
+        }
     }
 }

@@ -1,22 +1,29 @@
 package com.mindc.mongic.service;
 
 
+
 import com.mindc.mongic.annotation.MongoDocument;
-import com.mindc.mongic.annotation.MongoIndex;
+import com.mindc.mongic.annotation.MongoOption;
 import com.mindc.mongic.exception.MongicException;
+import com.mindc.mongic.utils.AESUtil;
 import com.mindc.mongic.utils.EntityUtils;
+import com.mindc.mongic.utils.JsonUtils;
 import com.mongodb.client.*;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+
 import org.bson.BsonObjectId;
 import org.bson.BsonValue;
 import org.bson.Document;
+import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.mongo.MongoProperties;
-
+import org.springframework.util.StringUtils;
 
 import javax.annotation.PostConstruct;
 import java.lang.reflect.Field;
@@ -37,18 +44,19 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     @Autowired
     private MongoProperties mongoProperties;
 
-    protected Class<T> entityClass;
+    private Class<T> entityClass;
+
+    private Logger logger = LoggerFactory.getLogger(BaseServiceImpl.class);
 
     private MongoCollection<Document> collection;
 
-    private String documentName;
-
     private String database;
+
+    private String documentName;
 
     private ThreadLocal<ClientSession> sessionThreadLocal = new ThreadLocal<>();
 
     private List<String> keyIndexes = Arrays.asList("_id", "id");
-
 
 
     public void startTransaction() {
@@ -61,8 +69,9 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         try (ClientSession clientSession = this.sessionThreadLocal.get()) {
             if (clientSession != null && clientSession.hasActiveTransaction()) {
                 clientSession.abortTransaction();
-                this.sessionThreadLocal.remove();
             }
+        } finally {
+            this.sessionThreadLocal.remove();
         }
     }
 
@@ -70,18 +79,17 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         try (ClientSession clientSession = this.sessionThreadLocal.get()) {
             if (clientSession != null && clientSession.hasActiveTransaction()) {
                 clientSession.commitTransaction();
-                clientSession.close();
-                this.sessionThreadLocal.remove();
             }
+        } finally {
+            this.sessionThreadLocal.remove();
         }
     }
-
 
     public MongoCollection<Document> getCollection() {
         if (collection != null) {
             return collection;
         }
-        return this.collection = mongoClient.getDatabase(documentName).getCollection(getDocumentName());
+        return this.collection = mongoClient.getDatabase(getDatabase()).getCollection(getDocumentName());
     }
 
 
@@ -89,51 +97,15 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @PostConstruct
     public void init() {
-        String uri = mongoProperties.getUri();
-        if (uri != null){
-            uri = uri.replace("mongodb://","");
-            String[] two = uri.split("/");
-            if (two.length == 2){
-                String[] split = two[1].split("\\?");
-                if (split.length >= 1){
-                    this.database = split[0];
-                }
-            }
-        }
+        getDatabase();
+        getDocumentName();
         if (this.database == null){
-            this.database = mongoProperties.getDatabase();
+            this.database = mongoProperties.getMongoClientDatabase();
+        }
+        if (database == null || "".equals(database)){
+            throw new MongicException("database can't be empty");
         }
 
-        ListIndexesIterable<Document> documents = getCollection().listIndexes();
-
-        documents.forEach(document -> {
-            String name = document.getString("name");
-            indexNames.add(name);
-        });
-        if (!indexNames.contains("uuid_1")) {
-            getCollection().createIndex(new Document("uuid", 1), new IndexOptions().unique(true));
-        }
-        if (!indexNames.contains("createTimestamp_-1")) {
-            getCollection().createIndex(new Document("createTimestamp", -1));
-        }
-        Class<T> entityClass = getEntityClass();
-        Field[] declaredFields = entityClass.getDeclaredFields();
-        for (Field declaredField : declaredFields) {
-            String fieldName = declaredField.getName();
-
-            MongoIndex annotation = declaredField.getAnnotation(MongoIndex.class);
-            if (annotation != null) {
-                String value = annotation.value();
-                if ("".equals(value)) {
-                    value = fieldName;
-                }
-                String value1 = value + "_1";
-                if (!indexNames.contains(value1)) {
-                    getCollection().createIndex(new Document(value, 1), new IndexOptions()
-                            .unique(annotation.unique()).sparse(annotation.sparse()).background(annotation.background()));
-                }
-            }
-        }
         afterInit();
 
     }
@@ -144,6 +116,24 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     protected void afterInit() {
 
     }
+    protected boolean showLog() {
+        return false;
+    }
+
+    /**
+     * 修改目标库
+     * @param database
+     */
+    public void changeDatabase(String database) {
+        this.collection = mongoClient.getDatabase(database).getCollection(getDocumentName());
+    }
+
+    /**
+     * 还原目标库
+     */
+    public void revertDatabase() {
+        this.collection = mongoClient.getDatabase(getDatabase()).getCollection(getDocumentName());
+    }
 
     /**
      * 创建索引，如果不存在
@@ -151,7 +141,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
      * @param field  字段名称
      * @param unique 是否唯一
      */
-    protected void createIndexIfNotExists(String field, boolean unique) {
+    protected void createIndexIfNotExists(String field, String indexName,boolean unique) {
         String name = field + "_1";
         if (!indexNames.contains(name)) {
             getCollection().createIndex(new Document(field, 1), new IndexOptions().unique(unique));
@@ -193,6 +183,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         BsonObjectId objectId = insertOneResult.getInsertedId().asObjectId();
         String id = objectId.getValue().toHexString();
         t.setId(id);
+
         return t;
     }
 
@@ -221,10 +212,21 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         return t;
     }
 
+
+    @Override
+    public T insertOrUpdate(T t){
+        Objects.requireNonNull(t);
+        if (t.getId()==null){
+            return insert(t);
+        }else {
+            return updateById(t) == 1 ? t : null;
+        }
+    }
+
     @Override
     public T selectById(String id) {
         checkId(id);
-        return selectOne(QueryCondition.create().eq("_id",id));
+        return selectOne(QueryCondition.create().eq("_id",new ObjectId(id)));
     }
 
     @Override
@@ -247,6 +249,9 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         if (sortDocument != null && !sortDocument.isEmpty()) {
             documents = documents.sort(sortDocument);
         }
+        if (showLog()){
+            logger.info("database:"+getDatabase()+" collection:"+getDocumentName()+" execute selectList query : "+document);
+        }
         documents = documents.skip(condition.getSkip()).limit(condition.getLimit());
         documents.forEach(document1 -> result.add(EntityUtils.fromDocument(document1, getEntityClass())));
 
@@ -268,19 +273,8 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     @Override
     public T selectOne(QueryCondition condition) {
 
-        ClientSession clientSession = sessionThreadLocal.get();
-        FindIterable<Document> documents;
-        if (clientSession != null){
-            documents = getCollection().find(clientSession,condition.getQueryDocument());
-        }else {
-            documents = getCollection().find(condition.getQueryDocument());
-        }
-
-        if (condition.getProjection() != null) {
-            documents = documents.projection(condition.getProjection());
-        }
-        Document doc = documents.limit(1).first();
-        return EntityUtils.fromDocument(doc, getEntityClass());
+        List<T> list = selectList(condition);
+        return list.isEmpty()?null:list.get(0);
     }
 
     @Override
@@ -300,19 +294,26 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     public long updateById(T t) {
         checkUpdateEntity(t);
 
-        Document query = new Document("_id", t.getId());
+        Document query = new Document("_id", new ObjectId(t.getId()));
         Document document = EntityUtils.toDocument(t);
         document.remove("uuid");
-        for (Map.Entry<String, Object> next : document.entrySet()) {
+        document.remove("id");
+        Iterator<Map.Entry<String, Object>> iterator = document.entrySet().iterator();
+        Set<String> keys = new HashSet<>();
+        while (iterator.hasNext()){
+            Map.Entry<String, Object> next = iterator.next();
             Object value = next.getValue();
-            if (value == null) {
-                document.remove(next.getKey());
+            if (value==null){
+                keys.add(next.getKey());
             }
         }
 
+        for (String key : keys) {
+            document.remove(key);
+        }
         return update(document, QueryCondition.create().query(query), false);
-
     }
+
 
     @Override
     public long updateAllColumnById(T t) {
@@ -321,6 +322,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         Document query = new Document("_id", t.getId());
         Document document = EntityUtils.toDocument(t);
         document.remove("uuid");
+        document.remove("id");
         return update(document, QueryCondition.create().query(query), false);
 
     }
@@ -328,11 +330,18 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     @Override
     public long update(T t, QueryCondition condition) {
         Document document = EntityUtils.toDocument(t);
-        for (Map.Entry<String, Object> next : document.entrySet()) {
+        Iterator<Map.Entry<String, Object>> iterator = document.entrySet().iterator();
+        Set<String> keys = new HashSet<>();
+        while (iterator.hasNext()){
+            Map.Entry<String, Object> next = iterator.next();
             Object value = next.getValue();
-            if (value == null) {
-                document.remove(next.getKey());
+            if (value==null){
+                keys.add(next.getKey());
             }
+        }
+
+        for (String key : keys) {
+            document.remove(key);
         }
 
         return update(document, condition, true);
@@ -389,7 +398,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @Override
     public long removeById(String id) {
-        QueryCondition q = QueryCondition.create().eq("_id", id);
+        QueryCondition q = QueryCondition.create().eq("_id", new ObjectId(id));
         return remove(q);
     }
 
@@ -421,6 +430,9 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         }
         if (queryCondition.getLimit() != Integer.MAX_VALUE) {
             pipe.add(new Document("$limit", queryCondition.getLimit()));
+        }
+        if (showLog()){
+            logger.info("execute aggregate query : "+JsonUtils.toJson(pipe));
         }
 
         List<K> data = new LinkedList<>();
@@ -499,8 +511,72 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
                 return entityClass.getSimpleName();
             }
             return documentName = value;
+        }else {
+
+            return entityClass.getSimpleName();
         }
-        throw new MongicException("missing annotation MongoDocument on " + entityClass.getName());
+    }
+
+    private String getDatabase() {
+
+        Class<T> entityClass = getEntityClass();
+        MongoDocument annotation = entityClass.getAnnotation(MongoDocument.class);
+        if (annotation != null) {
+            String value = annotation.database();
+            if (!StringUtils.isEmpty(value)){
+                return this.database = value;
+            }
+        }
+        return  this.database = this.mongoProperties.getMongoClientDatabase();
+    }
+
+    private static Document toDocumentWithOptions(Document doc,Class entityClass){
+
+        Field[] declaredFields = entityClass.getDeclaredFields();
+        for (String key : doc.keySet()) {
+            //判断key 是否是字段的field
+            for (Field declaredField : declaredFields) {
+                if (declaredField.getName().equals(key) && declaredField.getType().getName().equals(String.class.getName())){
+                    //key对应
+                    if (declaredField.isAnnotationPresent(MongoOption.class)){
+                        MongoOption annotation = declaredField.getAnnotation(MongoOption.class);
+                        if (annotation.encrypt() && annotation.pwd().length() == 16){
+                            //加密
+                            String version = annotation.version();
+                            //加密数据处理
+                            String prefix = annotation.encPrefix();
+
+                            String realPrefix = version+"_"+prefix;
+                            Object o = doc.get(key);
+                            if (o instanceof Document){
+                                Document c = (Document) o;
+                                for (String s : c.keySet()) {
+                                    Object o1 = c.get(s);
+                                    if (o1 instanceof String){
+                                        //加密
+                                        String enc = AESUtil.encode((String) o1, annotation.pwd());
+                                        c.put(s,realPrefix + enc);
+                                    }else if (o1 instanceof Collection){
+                                        List<String> resultList = new ArrayList<>();
+                                        for (Object next : ((Collection) o1)) {
+                                            if (!(next instanceof String)) {
+                                                continue;
+                                            }
+                                            String enc = AESUtil.encode((String) next, annotation.pwd());
+                                            resultList.add(realPrefix + enc);
+                                        }
+                                        c.put(s,resultList);
+                                    }
+                               }
+                            }
+                        }
+                    }
+
+                }
+            }
+
+        }
+        return doc;
     }
 
 
@@ -527,8 +603,9 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     }
 
     private void checkUpdateEntity(BaseEntity t) {
-        String uuid = t.getId();
-        if (uuid == null) {
+        String id = t.getId();
+
+        if (id == null) {
             throw new MongicException("id must not be null");
         }
 
@@ -545,4 +622,5 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
             throw new MongicException("id must not be null");
         }
     }
+
 }

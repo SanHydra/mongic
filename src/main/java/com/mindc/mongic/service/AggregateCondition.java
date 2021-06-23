@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * 聚合的group 封装实体
- * @author SanHydra
+ * @author lxf
  * @date 2020/7/18 6:18 PM
  */
 public class AggregateCondition {
@@ -17,6 +17,8 @@ public class AggregateCondition {
     private static final String OPER_MIN = "$min";
     private static final String OPER_AVG = "$avg";
     private static final String OPER_COUNT = "$count";
+    private static final String OPER_ADD_TO_SET = "$addToSet";
+    private static final String OPER_PUSH = "$push";
 
     /**
      * 进行分组的字段
@@ -110,6 +112,12 @@ public class AggregateCondition {
         return oper(field,resultField,OPER_AVG);
     }
 
+    public AggregateCondition addToSet(String field,String resultField){
+        return oper(field,resultField,OPER_ADD_TO_SET);
+    }
+    public AggregateCondition push(String field,String resultField){
+        return oper(field,resultField,OPER_PUSH);
+    }
     /**
      * 通用操作新增
      * @param field 字段名

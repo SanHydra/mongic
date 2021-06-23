@@ -8,7 +8,7 @@ import java.util.*;
 /**
  * mongo查询条件组装
  *
- * @author SanHydra
+ * @author lxf
  * @date 2020/7/18 10:35 AM
  */
 public class QueryCondition {
@@ -23,15 +23,6 @@ public class QueryCondition {
     private List<Order> orderFields = new ArrayList<>();
 
     /**
-     * 复杂查询之or
-     */
-    private List<QueryCondition> orConditions = new ArrayList<>();
-    /**
-     * 复杂查询之and
-     */
-    private List<QueryCondition> andConditions = new ArrayList<>();
-
-    /**
      * 查询时跳过的数据数量
      */
     private int skip =0;
@@ -40,6 +31,15 @@ public class QueryCondition {
      * 查询限制数量
      */
     private int limit = Integer.MAX_VALUE;
+
+    /**
+     * 复杂查询之or
+     */
+    private List<QueryCondition> orConditions = new ArrayList<>();
+    /**
+     * 复杂查询之and
+     */
+    private List<QueryCondition> andConditions = new ArrayList<>();
 
     /**
      * 空条件，用于不需要条件的查询
@@ -108,6 +108,18 @@ public class QueryCondition {
      */
     public QueryCondition eq(String field, Object value) {
         getC(field).addEq(value);
+        return this;
+    }
+
+    public QueryCondition eqIgnoreCase(String field, String  value) {
+        getC(field).addLike(value,"i");
+        return this;
+    }
+
+    public QueryCondition eqIgnoreCase(boolean con,String field, String  value) {
+        if (con) {
+            getC(field).addLike(value, "i");
+        }
         return this;
     }
 
@@ -257,7 +269,7 @@ public class QueryCondition {
      * @return
      */
     public QueryCondition in(String field, Collection values) {
-        if (values != null && values.size() > 0) {
+        if (values != null ) {
             getC(field).addIn(values);
         }
         return this;
@@ -284,8 +296,9 @@ public class QueryCondition {
      * @return
      */
     public QueryCondition in(String field, Object... values) {
-        if (values != null && values.length > 0) {
+        if (values != null ) {
             getC(field).addIn(Arrays.asList(values));
+
         }
         return this;
     }
@@ -311,7 +324,7 @@ public class QueryCondition {
      * @return
      */
     public QueryCondition notIn(String field, Collection values) {
-        if (values != null && values.size() > 0) {
+        if (values != null ) {
             getC(field).addNotIn(values);
         }
         return this;
@@ -368,6 +381,18 @@ public class QueryCondition {
         if(value != null) {
             getC(field).addLike(value);
         }
+        return this;
+    }
+
+    /**
+     * 是否存在
+     * @param field
+     * @param exists
+     * @return
+     */
+    public QueryCondition exists(String field, boolean exists) {
+        InnerCondition c = getC(field);
+        c.addExist(exists);
         return this;
     }
 
@@ -580,6 +605,9 @@ public class QueryCondition {
             if (!operations.isEmpty()){
                 for (BaseOperation operation : operations) {
                     criteria.put(operation.operateSymbol,operation.value);
+                    if (operation.getOption() != null){
+                        criteria.put("$options",operation.getOption());
+                    }
                 }
             }
             query.put(field,criteria);
@@ -599,7 +627,6 @@ public class QueryCondition {
             }
             query.put("$and",ands);
         }
-
         return query;
     }
 
@@ -672,6 +699,16 @@ public class QueryCondition {
             String reg = ".*" + toStandardRegex(value) + ".*";
             operations.add(new BaseOperation("$regex",reg));
         }
+        void addLike(String value,String option) {
+            String reg = ".*" + toStandardRegex(value) + ".*";
+            BaseOperation baseOperation = new BaseOperation("$regex", reg);
+            baseOperation.setOption(option);
+            operations.add(baseOperation);
+        }
+
+        void addExist(boolean exist){
+            operations.add(new BaseOperation("$exists",exist?1:0));
+        }
 
     }
 
@@ -679,10 +716,19 @@ public class QueryCondition {
     private class BaseOperation {
         private String operateSymbol;
         private Object value;
+        private String option;
 
         private BaseOperation(String operateSymbol, Object value) {
             this.operateSymbol = operateSymbol;
             this.value = value;
+        }
+
+        public void setOption(String option) {
+            this.option = option;
+        }
+
+        public String getOption() {
+            return option;
         }
     }
 

@@ -1,8 +1,10 @@
 package com.mindc.mongic.service;
 
+import com.mindc.mongic.utils.EntityUtils;
 import org.bson.Document;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -19,6 +21,7 @@ public class UpdateOperation {
     public static UpdateOperation create(){
         return new UpdateOperation();
     }
+
 
     /**
      * 累加
@@ -47,7 +50,20 @@ public class UpdateOperation {
         if (push == null){
             push = new Document();
         }
-        push.put(column,value);
+        push.put(column,EntityUtils.parseObject(value));
+        updateDocument.put("$push",push);
+        return this;
+    }
+
+    public UpdateOperation pushMulti(String column, Collection value){
+        Document push = (Document) updateDocument.get("$push");
+        if (push == null){
+            push = new Document();
+        }
+        Document each = new Document();
+        Object o = EntityUtils.parseObject(value);
+        each.put("$each",o);
+        push.put(column, each);
         updateDocument.put("$push",push);
         return this;
     }
@@ -63,8 +79,21 @@ public class UpdateOperation {
         if (addToSet == null){
             addToSet = new Document();
         }
-        addToSet.put(column,value);
+        addToSet.put(column,EntityUtils.parseObject(value));
         updateDocument.put("$addToSet",addToSet);
+        return this;
+    }
+
+    public UpdateOperation addToSetMulti(String column, Collection value){
+        Document push = (Document) updateDocument.get("$addToSet");
+        if (push == null){
+            push = new Document();
+        }
+        Document each = new Document();
+        Object o = EntityUtils.parseObject(value);
+        each.put("$each",o);
+        push.put(column, each);
+        updateDocument.put("$addToSet",push);
         return this;
     }
 
@@ -117,11 +146,11 @@ public class UpdateOperation {
      * @return
      */
     public UpdateOperation set(String column, Object value){
-        Document set = (Document) updateDocument.get("set");
+        Document set = (Document) updateDocument.get("$set");
         if (set == null){
             set = new Document();
         }
-        set.put(column,value);
+        set.put(column,EntityUtils.parseObject(value));
         updateDocument.put("$set",set);
         return this;
     }
@@ -129,4 +158,5 @@ public class UpdateOperation {
     public Document getUpdateDocument() {
         return updateDocument;
     }
+
 }
