@@ -53,37 +53,10 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     private String database;
 
     private String documentName;
-
-    private ThreadLocal<ClientSession> sessionThreadLocal = new ThreadLocal<>();
-
+    
     private List<String> keyIndexes = Arrays.asList("_id", "id");
 
-
-    public void startTransaction() {
-        ClientSession clientSession = mongoClient.startSession();
-        clientSession.startTransaction();
-        this.sessionThreadLocal.set(clientSession);
-    }
-
-    public void abortTransaction() {
-        try (ClientSession clientSession = this.sessionThreadLocal.get()) {
-            if (clientSession != null && clientSession.hasActiveTransaction()) {
-                clientSession.abortTransaction();
-            }
-        } finally {
-            this.sessionThreadLocal.remove();
-        }
-    }
-
-    public void commitTransaction() {
-        try (ClientSession clientSession = this.sessionThreadLocal.get()) {
-            if (clientSession != null && clientSession.hasActiveTransaction()) {
-                clientSession.commitTransaction();
-            }
-        } finally {
-            this.sessionThreadLocal.remove();
-        }
-    }
+    
 
     public MongoCollection<Document> getCollection() {
         if (collection != null) {
@@ -173,7 +146,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
     public T insert(T t) {
         Document document = EntityUtils.toDocument(t);
         document.remove("id");
-        ClientSession clientSession = this.sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         InsertOneResult insertOneResult;
         if (clientSession != null) {
             insertOneResult = getCollection().insertOne(clientSession, document);
@@ -195,7 +168,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
             document.remove("id");
             list.add(document);
         }
-        ClientSession clientSession = this.sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
 
         InsertManyResult insertManyResult;
         if (clientSession != null) {
@@ -234,7 +207,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         List<T> result = new ArrayList<>();
         Document document = condition.getQueryDocument();
         Document sortDocument = condition.getSortDocument();
-        ClientSession clientSession = this.sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         FindIterable<Document> documents;
         if (clientSession != null) {
             documents = getCollection().find(clientSession,document);
@@ -260,7 +233,8 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @Override
     public long selectCount(QueryCondition condition) {
-        ClientSession clientSession = this.sessionThreadLocal.get();
+        
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         long l;
         if (clientSession != null){
             l = getCollection().countDocuments(clientSession,condition.getQueryDocument());
@@ -352,7 +326,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         Document document = operation.getUpdateDocument();
 
         checkUpdateDocument(document);
-        ClientSession clientSession = sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         if (clientSession != null) {
             return getCollection().updateMany(clientSession,condition.getQueryDocument(), document).getModifiedCount();
         }else {
@@ -375,7 +349,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
         Document set = new Document();
         set.put("$set", updateDocument);
-        ClientSession clientSession = sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         UpdateResult updateResult;
         if (clientSession != null){
             updateResult = getCollection().updateMany(clientSession,condition.getQueryDocument(), set);
@@ -387,7 +361,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
 
     @Override
     public long remove(QueryCondition condition) {
-        ClientSession clientSession = sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         if (clientSession != null){
           return getCollection().deleteMany(clientSession,condition.getQueryDocument()).getDeletedCount();
         }else {
@@ -436,7 +410,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         }
 
         List<K> data = new LinkedList<>();
-        ClientSession clientSession = sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         AggregateIterable<Document> aggregate;
         if (clientSession != null) {
             aggregate = getCollection().aggregate(clientSession,pipe);
@@ -469,7 +443,7 @@ public abstract class BaseServiceImpl<T extends BaseEntity> implements BaseServi
         pipe.add(new Document("$group", groupCondition.getDocument()));
 
         AtomicLong atomicLong = new AtomicLong(0);
-        ClientSession clientSession = sessionThreadLocal.get();
+        ClientSession clientSession = MongoSessionManager.getClientSession();
         if (clientSession == null) {
             getCollection().aggregate(pipe).forEach(doc -> atomicLong.incrementAndGet());
         }else {
