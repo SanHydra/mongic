@@ -10,7 +10,7 @@
 
     <properties>
         <java.version>1.8</java.version>
-        <jackson.version>2.11.1</jackson.version>
+        <jackson.version>2.13.4.1</jackson.version>
         <mongo.version>4.0.5</mongo.version>
         <springboot.version>2.3.1.RELEASE</springboot.version>
     </properties>
